@@ -1,0 +1,109 @@
+name: Publish release
+on:
+  push:
+    branches:
+    - 'master'
+jobs:
+  add_release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Create tag
+      id: create_tag
+      run: |
+        tag=build-$(date +%Y%m%d-%H%M%S)
+        echo "::set-output name=tag::$tag"
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.create_tag.outputs.tag }}
+        release_name: ${{ steps.create_tag.outputs.tag }}
+        draft: true
+        prerelease: false
+    - name: Create artifact files
+      run: |
+        mkdir info
+        echo "${{ steps.create_release.outputs.id }}" > info/release_id
+        echo "${{ steps.create_release.outputs.upload_url }}" > info/upload_url
+    - uses: actions/upload-artifact@v1
+      with:
+        name: info
+        path: info
+
+  build:
+    needs: [add_release]
+    name: Run build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v1
+      with:
+        name: info
+    - name: Set upload_url
+      id: upload_info
+      run: |
+        upload_url=$(cat info/upload_url)
+        echo "::set-output name=upload_url::$upload_url"
+    - uses: actions/checkout@v2
+    - name: Setup Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: 'wasm32-unknown-unknown'
+    - uses: actions/setup-node@v2
+      with:
+        cache: 'yarn'
+    - run: yarn install
+
+    - name: Restore cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: build-${{ hashFiles('**/Cargo.toml','**/Cargo.lock') }}
+    
+    - run: yarn run build
+
+    - name: Create archive
+      run: tar czf build.tar.gz -C dist/ .
+
+    - name: Upload artifacts
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.upload_info.outputs.upload_url }}
+        asset_path: build.tar.gz
+        asset_name: build.tar.gz
+        asset_content_type: application/gzip
+
+  metadata:
+    name: Publish Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v1
+      with:
+        name: info
+    - name: Set publish_info
+      id: publish_info
+      run: |
+        release_id=$(cat info/release_id)
+        echo "::set-output name=release_id::$release_id"
+    - uses: eregon/publish-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        release_id: ${{ steps.publish_info.outputs.release_id }}
+    - uses: eregon/keep-last-n-releases@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        n: 5
