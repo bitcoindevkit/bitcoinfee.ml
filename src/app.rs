@@ -269,7 +269,7 @@ impl Component for App {
         html! {
             <>
                 <h2>{ "Run" }</h2>
-                <input type="text" onchange=self.link.callback(Msg::SetTarget) /><button onclick=self.link.callback(|_| Msg::Estimate) disabled=self.state.target.is_none()>{ "Estimate" }</button> <br/>
+                <input type="number" min=1 max=1008 onchange=self.link.callback(Msg::SetTarget) /><button onclick=self.link.callback(|_| Msg::Estimate) disabled=self.state.target.is_none()>{ "Estimate" }</button> <br/>
                 <button onclick=self.link.callback(|_| Msg::GetLatestBlocks)>{ "Refresh blocks" }</button>
                 <h2>{ "State" }</h2>
                 <pre>{ format!("blocks: {:?}", self.state.blocks.as_ref().map(|map| map.len())) }</pre>
